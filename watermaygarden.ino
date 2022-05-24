@@ -76,7 +76,7 @@ void checkIfPumpOnOrOFF(int wert, int wert2){
   }
 }
 
-// function who waits given time butr not block like delay()
+// function who waits given time but not block like delay()
 int startNormalThread(int * wert){
   static unsigned long int waitSince = 0;
   static bool state = true;
