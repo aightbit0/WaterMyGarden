@@ -3,13 +3,22 @@ const int WATERLEVEL_PIN = A3;
 const int RELAY_PIN = 3;
 const int WATERSENSOR_PIN1 = A0;
 const int WATERSENSOR_PIN2 = A1;
-// water options
-const int WATERAT = 800;
-const int WATERSTOPAT = 500;
+//water options
+const int WATERAT = 570;
+const int WATERSTOPAT = 370;
 bool WATEREMPTY = false;
-int TIME = 6000;
-int MINVALUE = 900;
-bool pumpOn = false;
+
+int const TIMEDEAFAULT = 15000;
+int const TIMEFAST = 1000;
+
+int TIME = TIMEDEAFAULT;
+int const MINVALUE = 900;
+bool PUMPON = false;
+bool EMERGENCYSTOP = false;
+int const MAXPUMPTIMECOUNTER = 90; // 90*1sec=90
+int const MAXWAITTOCONTINUEPUMPCOUNT = 480; //60sec/15sec=4*120 = 480
+int PUMPTIMECOUNTER = 0;
+int WAITTOCONTINUEPUMPCOUNT = 0;
 
 void setup() 
 {
@@ -19,7 +28,7 @@ void setup()
 
 void loop()
 {
-  startNormalThread(&TIME);
+  startNormalThread();
 }
 
 //reads value from sensor
@@ -30,31 +39,52 @@ int getValue(int pin){
 }
 
 //function who set pump on or off
-void pumpOnOff(bool state, int*Time){
+void pumpOnOff(bool state){
   if(WATEREMPTY == true){
     Serial.println("Pump off WATER EMPTY !");
     digitalWrite(RELAY_PIN, LOW);
-    pumpOn = false;
-    *Time = 6000;
+    PUMPON = false;
+    TIME = TIMEDEAFAULT;
     return;
   }
   if(WATEREMPTY == false){
     if(state == true){
       Serial.println("Pump on");
       digitalWrite(RELAY_PIN, HIGH);
-      *Time = 1000;
-      pumpOn = true;
+      TIME = TIMEFAST;
+      PUMPON = true;
     }else if(state == false){
       Serial.println("Pump off");
       digitalWrite(RELAY_PIN, LOW);
-      pumpOn = false;
-      *Time = 6000;
+      PUMPON = false;
+      TIME = TIMEDEAFAULT;
     }
   }
 }
 
 //function who check if pump should be on or off
-void checkIfPumpOnOrOFF(int sensorValue1, int sensorValue2){
+void checkIfPUMPONOrOFF(int sensorValue1, int sensorValue2){
+  if(EMERGENCYSTOP == false && PUMPON == true){
+    PUMPTIMECOUNTER = PUMPTIMECOUNTER + 1;
+    if(PUMPTIMECOUNTER == MAXPUMPTIMECOUNTER){
+      Serial.println("reached max pump time shutting off pump..");
+      PUMPTIMECOUNTER = 0;
+      EMERGENCYSTOP = true;
+      pumpOnOff(false);
+      return;
+    }
+
+  }
+  if(EMERGENCYSTOP == true){
+    WAITTOCONTINUEPUMPCOUNT = WAITTOCONTINUEPUMPCOUNT + 1;
+    if(WAITTOCONTINUEPUMPCOUNT == MAXWAITTOCONTINUEPUMPCOUNT){
+      Serial.println("reached deadline");
+      EMERGENCYSTOP = false;
+      WAITTOCONTINUEPUMPCOUNT = 0;
+    }
+    return;
+  }
+  
  int value = getValue(WATERLEVEL_PIN);
  Serial.print("Sensor value: ");
  Serial.println(value);
@@ -62,17 +92,17 @@ void checkIfPumpOnOrOFF(int sensorValue1, int sensorValue2){
   Serial.println("WATER IS EMPTY !");
   if(WATEREMPTY == false){
     WATEREMPTY = true;
-    pumpOnOff(false,&TIME);
+    pumpOnOff(false);
   }
   return;
  }
  if(value <= MINVALUE){
     Serial.println("WATER OK");
     WATEREMPTY = false;
-    if((sensorValue1 >= WATERAT || sensorValue2 >= WATERAT) && pumpOn == false){
-      pumpOnOff(true, &TIME);
-    }else if((sensorValue1 <= WATERSTOPAT && sensorValue2 <= WATERSTOPAT) && pumpOn == true){
-      pumpOnOff(false, &TIME);
+    if((sensorValue1 >= WATERAT || sensorValue2 >= WATERAT) && PUMPON == false){
+      pumpOnOff(true);
+    }else if((sensorValue1 <= WATERSTOPAT && sensorValue2 <= WATERSTOPAT) && PUMPON == true){
+      pumpOnOff(false);
     }
   }
 }
@@ -80,26 +110,25 @@ void checkIfPumpOnOrOFF(int sensorValue1, int sensorValue2){
 void readValues(){
    int oneValue = getValue(WATERSENSOR_PIN1);
    int twoValue = getValue(WATERSENSOR_PIN2);
-   checkIfPumpOnOrOFF(oneValue, twoValue);
+   checkIfPUMPONOrOFF(oneValue, twoValue);
 }
 
 // function who waits given time but not block like delay()
-int startNormalThread(int * timeValue){
+int startNormalThread(){
   static unsigned long int waitSince = 0;
   static bool state = true;
   
   if(state == true){
-    if (millis() - waitSince >= *timeValue) {
+    if (millis() - waitSince >= TIME) {
       readValues();
       state = false;
       waitSince = millis();
     }
    }else if(state == false){
-      if (millis() - waitSince >= *timeValue) {
+      if (millis() - waitSince >= TIME) {
         readValues();
         state = true;
         waitSince = millis();
       }
     }
-    
 }
